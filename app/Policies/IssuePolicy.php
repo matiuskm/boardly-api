@@ -27,4 +27,14 @@ class IssuePolicy
     {
         return WorkspaceAccess::isMember($user, $issue->board->project->workspace);
     }
+
+    public function move(User $user, Issue $issue): bool
+    {
+        return WorkspaceAccess::isMember($user, $issue->board->project->workspace);
+    }
+
+    public function assign(User $user, Issue $issue): bool
+    {
+        return WorkspaceAccess::canManageWorkspace($user, $issue->board->project->workspace);
+    }
 }

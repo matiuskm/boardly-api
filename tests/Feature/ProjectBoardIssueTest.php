@@ -222,3 +222,26 @@ it('deletes issues', function () {
 
     $this->assertDatabaseMissing('issues', ['id' => $issue->id]);
 });
+
+it('returns grouped issues when requested', function () {
+    $user = User::factory()->create();
+    [, $project, $board] = createProjectWithBoard($user);
+
+    $board->issues()->createMany([
+        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
+        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
+        ['title' => 'Done 1', 'status' => 'done', 'position' => 1],
+    ]);
+
+    $response = $this->actingAs($user, 'sanctum')
+        ->getJson("/api/projects/{$project->id}/board?include=issues");
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'data' => ['columns' => ['todo', 'doing', 'done']],
+            'meta' => ['request_id'],
+        ])
+        ->assertJsonPath('data.columns.todo.0.title', 'Todo 1')
+        ->assertJsonPath('data.columns.doing.0.title', 'Doing 1')
+        ->assertJsonPath('data.columns.done.0.title', 'Done 1');
+});

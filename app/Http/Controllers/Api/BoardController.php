@@ -14,10 +14,26 @@ class BoardController extends Controller
     {
         $this->authorize('view', $project);
 
-        $board = $project->board()->with('issues')->first();
+        $board = $project->board()->first();
 
         if (! $board) {
             return ApiResponse::error('Board not found.', 'not_found', 404);
+        }
+
+        $include = request()->query('include');
+        if ($include && str_contains($include, 'issues')) {
+            $issues = $board->issues()
+                ->orderBy('position')
+                ->get()
+                ->groupBy('status');
+
+            $columns = [
+                'todo' => $issues->get('todo', collect())->values(),
+                'doing' => $issues->get('doing', collect())->values(),
+                'done' => $issues->get('done', collect())->values(),
+            ];
+
+            return ApiResponse::success(['columns' => $columns]);
         }
 
         return ApiResponse::success(['board' => $board]);

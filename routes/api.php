@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\WorkspaceController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\BoardController;
 use App\Http\Controllers\Api\IssueController;
+use App\Http\Controllers\Api\IssueCommentController;
+use App\Http\Controllers\Api\ActivityController;
 
 Route::get('/user', function (Request $request) {
     return ApiResponse::success(['user' => $request->user()]);
@@ -31,5 +33,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/boards/{board}/issues', [IssueController::class, 'index']);
     Route::post('/boards/{board}/issues', [IssueController::class, 'store']);
     Route::patch('/issues/{issue}', [IssueController::class, 'update']);
+    Route::post('/issues/{issue}/move', [IssueController::class, 'move']);
+    Route::post('/issues/{issue}/assign', [IssueController::class, 'assign']);
     Route::delete('/issues/{issue}', [IssueController::class, 'destroy']);
+
+    Route::get('/issues/{issue}/comments', [IssueCommentController::class, 'index']);
+    Route::post('/issues/{issue}/comments', [IssueCommentController::class, 'store']);
+
+    Route::get('/workspaces/{workspace}/activities', [ActivityController::class, 'index']);
 });

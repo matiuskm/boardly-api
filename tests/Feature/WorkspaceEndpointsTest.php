@@ -84,3 +84,17 @@ it('allows viewing workspace details for members', function () {
 
     expect($response->headers->get('X-Request-Id'))->not->toBeNull();
 });
+
+it('returns 404 with standardized payload when workspace is missing', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user, 'sanctum')
+        ->getJson('/api/workspaces/'.\Illuminate\Support\Str::uuid());
+
+    $response->assertStatus(404)
+        ->assertJsonPath('error.code', 'not_found')
+        ->assertJsonStructure([
+            'error' => ['message', 'code'],
+            'meta' => ['request_id'],
+        ]);
+});

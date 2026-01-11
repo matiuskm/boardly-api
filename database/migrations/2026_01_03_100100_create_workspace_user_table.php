@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('workspace_user', function (Blueprint $table) {
-            $table->foreignId('workspace_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->string('role')->default('member');
+            $table->foreignUuid('workspace_id')->constrained('workspaces')->cascadeOnDelete();
+            $table->foreignUuid('user_id')->constrained('users')->cascadeOnDelete();
+            $table->enum('role', ['owner', 'admin', 'member'])->default('member');
             $table->timestamps();
 
             $table->primary(['workspace_id', 'user_id']);

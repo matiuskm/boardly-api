@@ -4,14 +4,11 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use App\Models\Workspace;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 class DevSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Run the database seeds.
      */
@@ -36,5 +33,23 @@ class DevSeeder extends Seeder
         $workspace->users()->syncWithoutDetaching([
             $user->id => ['role' => 'owner'],
         ]);
+
+        $project = $workspace->projects()->create([
+            'name' => 'Demo Project',
+            'description' => 'Demo project description',
+        ]);
+
+        $board = $project->board()->create([
+            'name' => 'Demo Board',
+        ]);
+
+        collect(range(1, 5))->each(function ($i) use ($board) {
+            $board->issues()->create([
+                'title' => "Demo Issue {$i}",
+                'description' => "Description for issue {$i}",
+                'status' => 'todo',
+                'position' => $i,
+            ]);
+        });
     }
 }

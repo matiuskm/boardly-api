@@ -34,4 +34,20 @@ class WorkspaceAccess
 
         return in_array($role, ['owner', 'admin'], true);
     }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function managedWorkspaceIds(User $user): array
+    {
+        return $user->workspaces()
+            ->wherePivotIn('role', ['owner', 'admin'])
+            ->pluck('workspaces.id')
+            ->all();
+    }
+
+    public static function canManageAnyWorkspace(User $user): bool
+    {
+        return ! empty(self::managedWorkspaceIds($user));
+    }
 }

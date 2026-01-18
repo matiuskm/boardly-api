@@ -28,27 +28,33 @@ function createProjectWithBoardFor(User $user): array
         'workspace_id' => $workspace->id,
     ]);
     $board = $project->board()->create(['name' => 'Main Board']);
+    $columns = collect([
+        ['name' => 'Todo', 'key' => 'todo', 'position' => 1],
+        ['name' => 'Doing', 'key' => 'doing', 'position' => 2],
+        ['name' => 'Done', 'key' => 'done', 'position' => 3],
+    ])->map(fn (array $data) => $board->columns()->create($data));
 
-    return [$workspace, $project, $board];
+    return [$workspace, $project, $board, $columns];
 }
 
 it('moves issues within the same column and normalizes positions', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoardFor($user);
+    [, , $board, $columns] = createProjectWithBoardFor($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
 
     $issues = $board->issues()->createMany([
-        ['title' => 'One', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Two', 'status' => 'todo', 'position' => 2],
-        ['title' => 'Three', 'status' => 'todo', 'position' => 3],
-        ['title' => 'Four', 'status' => 'todo', 'position' => 4],
-        ['title' => 'Five', 'status' => 'todo', 'position' => 5],
+        ['title' => 'One', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Two', 'column_id' => $todoColumn->id, 'position' => 2],
+        ['title' => 'Three', 'column_id' => $todoColumn->id, 'position' => 3],
+        ['title' => 'Four', 'column_id' => $todoColumn->id, 'position' => 4],
+        ['title' => 'Five', 'column_id' => $todoColumn->id, 'position' => 5],
     ]);
 
     $moveTarget = $issues[3];
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson("/api/issues/{$moveTarget->id}/move", [
-            'to_status' => 'todo',
+            'to_column_id' => $todoColumn->id,
             'to_position' => 2,
         ]);
 
@@ -56,7 +62,7 @@ it('moves issues within the same column and normalizes positions', function () {
         ->assertJsonPath('data.issue.position', 2);
 
     $positions = $board->issues()
-        ->where('status', 'todo')
+        ->where('column_id', $todoColumn->id)
         ->orderBy('position')
         ->pluck('position')
         ->all();
@@ -66,37 +72,39 @@ it('moves issues within the same column and normalizes positions', function () {
 
 it('moves issues across columns and closes gaps', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoardFor($user);
+    [, , $board, $columns] = createProjectWithBoardFor($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $todo = $board->issues()->createMany([
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Todo 2', 'status' => 'todo', 'position' => 2],
-        ['title' => 'Todo 3', 'status' => 'todo', 'position' => 3],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Todo 2', 'column_id' => $todoColumn->id, 'position' => 2],
+        ['title' => 'Todo 3', 'column_id' => $todoColumn->id, 'position' => 3],
     ]);
 
     $board->issues()->createMany([
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
-        ['title' => 'Doing 2', 'status' => 'doing', 'position' => 2],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
+        ['title' => 'Doing 2', 'column_id' => $doingColumn->id, 'position' => 2],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson("/api/issues/{$todo[1]->id}/move", [
-            'to_status' => 'doing',
+            'to_column_id' => $doingColumn->id,
             'to_position' => 1,
         ]);
 
     $response->assertStatus(200)
-        ->assertJsonPath('data.issue.status', 'doing')
+        ->assertJsonPath('data.issue.column_id', $doingColumn->id)
         ->assertJsonPath('data.issue.position', 1);
 
     $todoPositions = $board->issues()
-        ->where('status', 'todo')
+        ->where('column_id', $todoColumn->id)
         ->orderBy('position')
         ->pluck('position')
         ->all();
 
     $doingPositions = $board->issues()
-        ->where('status', 'doing')
+        ->where('column_id', $doingColumn->id)
         ->orderBy('position')
         ->pluck('position')
         ->all();
@@ -107,38 +115,41 @@ it('moves issues across columns and closes gaps', function () {
 
 it('clamps moves to the end of the target column', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoardFor($user);
+    [, , $board, $columns] = createProjectWithBoardFor($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $issue = $board->issues()->create([
         'title' => 'Todo 1',
-        'status' => 'todo',
+        'column_id' => $todoColumn->id,
         'position' => 1,
     ]);
 
     $board->issues()->createMany([
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
-        ['title' => 'Doing 2', 'status' => 'doing', 'position' => 2],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
+        ['title' => 'Doing 2', 'column_id' => $doingColumn->id, 'position' => 2],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson("/api/issues/{$issue->id}/move", [
-            'to_status' => 'doing',
+            'to_column_id' => $doingColumn->id,
             'to_position' => 99,
         ]);
 
     $response->assertStatus(200)
-        ->assertJsonPath('data.issue.status', 'doing')
+        ->assertJsonPath('data.issue.column_id', $doingColumn->id)
         ->assertJsonPath('data.issue.position', 3);
 });
 
 it('logs activity for comments and blocks non-members', function () {
     $user = User::factory()->create();
     $outsider = User::factory()->create();
-    [$workspace, , $board] = createProjectWithBoardFor($user);
+    [$workspace, , $board, $columns] = createProjectWithBoardFor($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
 
     $issue = $board->issues()->create([
         'title' => 'Commented issue',
-        'status' => 'todo',
+        'column_id' => $todoColumn->id,
         'position' => 1,
     ]);
 
@@ -163,7 +174,9 @@ it('requires admins to assign and records activities for key actions', function 
     $member = User::factory()->create();
     $assignee = User::factory()->create();
 
-    [$workspace, , $board] = createProjectWithBoardFor($owner);
+    [$workspace, , $board, $columns] = createProjectWithBoardFor($owner);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $workspace->members()->syncWithoutDetaching([
         $member->id => ['role' => 'member'],
@@ -173,7 +186,7 @@ it('requires admins to assign and records activities for key actions', function 
     $issueResponse = $this->actingAs($owner, 'sanctum')
         ->postJson("/api/boards/{$board->id}/issues", [
             'title' => 'Assign me',
-            'status' => 'todo',
+            'column_id' => $todoColumn->id,
         ]);
 
     $issueId = $issueResponse->json('data.issue.id');
@@ -193,7 +206,7 @@ it('requires admins to assign and records activities for key actions', function 
 
     $this->actingAs($owner, 'sanctum')
         ->postJson("/api/issues/{$issueId}/move", [
-            'to_status' => 'doing',
+            'to_column_id' => $doingColumn->id,
             'to_position' => 1,
         ])
         ->assertStatus(200);
@@ -216,12 +229,13 @@ it('requires admins to assign and records activities for key actions', function 
 it('lists activities only for workspace members', function () {
     $user = User::factory()->create();
     $outsider = User::factory()->create();
-    [$workspace, , $board] = createProjectWithBoardFor($user);
+    [$workspace, , $board, $columns] = createProjectWithBoardFor($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
 
     $this->actingAs($user, 'sanctum')
         ->postJson("/api/boards/{$board->id}/issues", [
             'title' => 'Activity seed',
-            'status' => 'todo',
+            'column_id' => $todoColumn->id,
         ])
         ->assertStatus(201);
 
@@ -233,7 +247,7 @@ it('lists activities only for workspace members', function () {
         ->getJson("/api/workspaces/{$workspace->id}/activities")
         ->assertStatus(200)
         ->assertJsonStructure([
-            'data' => ['activities' => ['data', 'current_page']],
+            'data' => ['activities' => ['data', 'next_cursor']],
             'meta' => ['request_id'],
         ]);
 });

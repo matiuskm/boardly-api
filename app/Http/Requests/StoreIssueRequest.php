@@ -16,7 +16,9 @@ class StoreIssueRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['nullable', 'in:todo,doing,done'],
+            'column_id' => ['nullable', 'uuid', 'exists:board_columns,id'],
+            'priority' => ['nullable', 'integer', 'between:1,5'],
+            'due_at' => ['nullable', 'date'],
         ];
     }
 }

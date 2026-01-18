@@ -8,6 +8,11 @@ use App\Support\WorkspaceAccess;
 
 class WorkspacePolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return WorkspaceAccess::canManageAnyWorkspace($user);
+    }
+
     public function create(User $user): bool
     {
         return true;

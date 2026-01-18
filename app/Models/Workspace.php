@@ -45,6 +45,11 @@ class Workspace extends Model
         return $this->hasMany(Activity::class);
     }
 
+    public function labels(): HasMany
+    {
+        return $this->hasMany(Label::class);
+    }
+
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'workspace_user')

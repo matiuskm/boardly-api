@@ -14,6 +14,8 @@ use App\Services\ActivityLogger;
 use App\Services\IssueMover;
 use App\Support\ApiResponse;
 use App\Support\WorkspaceAccess;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 
 class IssueController extends Controller
 {
@@ -21,12 +23,39 @@ class IssueController extends Controller
     {
         $this->authorize('view', $board);
 
-        $issues = $board->issues()
-            ->orderBy('status')
-            ->orderBy('position')
-            ->get();
+        $query = $board->issues()
+            ->with(['assignee', 'labels']);
 
-        return ApiResponse::success(['issues' => $issues]);
+        $this->applyFilters($query, request()->query());
+
+        $sort = request()->query('sort', 'position');
+        $direction = strtolower((string) request()->query('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSorts = ['position', 'updated_at', 'due_at'];
+
+        if (! in_array($sort, $allowedSorts, true)) {
+            $sort = 'position';
+        }
+
+        if ($sort === 'position') {
+            $query->orderBy('column_id')->orderBy('position', $direction);
+        } else {
+            $query->orderBy($sort, $direction);
+        }
+
+        $issues = $query->get()->groupBy('column_id');
+
+        $columnsQuery = $board->columns()->orderBy('position');
+        $columnId = request()->query('column_id');
+        if ($columnId) {
+            $columnsQuery->where('id', $columnId);
+        }
+
+        $columns = $columnsQuery->get()->map(function ($column) use ($issues) {
+            $column->setRelation('issues', $issues->get($column->id, collect())->values());
+            return $column;
+        });
+
+        return ApiResponse::success(['columns' => $columns]);
     }
 
     public function store(StoreIssueRequest $request, Board $board, ActivityLogger $activityLogger)
@@ -34,17 +63,27 @@ class IssueController extends Controller
         $this->authorize('create', $board);
 
         $data = $request->validated();
-        $status = $data['status'] ?? 'todo';
+        $columnId = $data['column_id'] ?? $board->columns()->orderBy('position')->value('id');
+
+        if (! $columnId) {
+            return ApiResponse::error('Board has no columns.', 'no_columns', 422);
+        }
+
+        if (! $board->columns()->where('id', $columnId)->exists()) {
+            return ApiResponse::error('Column not found on board.', 'column_not_found', 404);
+        }
 
         $position = $board->issues()
-            ->where('status', $status)
+            ->where('column_id', $columnId)
             ->max('position');
 
         $issue = $board->issues()->create([
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
-            'status' => $status,
+            'column_id' => $columnId,
             'position' => ($position ?? 0) + 1,
+            'priority' => $data['priority'] ?? null,
+            'due_at' => $data['due_at'] ?? null,
         ]);
 
         $activityLogger->issueCreated($request->user(), $issue);
@@ -56,22 +95,31 @@ class IssueController extends Controller
     {
         $this->authorize('update', $issue);
 
+        $requestId = $request->attributes->get('request_id');
+        $user = $request->user();
+        if ($requestId && $user->last_issue_update_request_id === $requestId) {
+            return ApiResponse::success(['issue' => $issue->fresh()]);
+        }
+
         $data = $request->validated();
-        $status = $data['status'] ?? $issue->status;
         $moved = false;
-        $fromStatus = $issue->status;
+        $fromColumnId = $issue->column_id;
         $fromPosition = $issue->position;
 
-        if (array_key_exists('status', $data) && $status !== $issue->status) {
+        if (array_key_exists('column_id', $data) && $data['column_id'] !== $issue->column_id) {
+            if (! $issue->board->columns()->where('id', $data['column_id'])->exists()) {
+                return ApiResponse::error('Column not found on board.', 'column_not_found', 404);
+            }
+
             $targetPosition = ($issue->board->issues()
-                ->where('status', $status)
+                ->where('column_id', $data['column_id'])
                 ->count()) + 1;
 
-            $issue = $issueMover->move($issue, $status, $targetPosition);
+            $issue = $issueMover->move($issue, $data['column_id'], $targetPosition);
             $moved = true;
         }
 
-        unset($data['status']);
+        unset($data['column_id']);
 
         if (! empty($data)) {
             $issue->update($data);
@@ -79,11 +127,15 @@ class IssueController extends Controller
 
         if ($moved) {
             $activityLogger->issueMoved($request->user(), $issue, [
-                'from' => $fromStatus,
-                'to' => $issue->status,
+                'from_column_id' => $fromColumnId,
+                'to_column_id' => $issue->column_id,
                 'from_position' => $fromPosition,
                 'to_position' => $issue->position,
             ]);
+        }
+
+        if ($requestId) {
+            $user->update(['last_issue_update_request_id' => $requestId]);
         }
 
         return ApiResponse::success(['issue' => $issue->fresh()]);
@@ -93,19 +145,29 @@ class IssueController extends Controller
     {
         $this->authorize('move', $issue);
 
+        $requestId = $request->attributes->get('request_id');
+        $user = $request->user();
+        if ($requestId && $user->last_issue_move_request_id === $requestId) {
+            return ApiResponse::success(['issue' => $issue->fresh()]);
+        }
+
         $data = $request->validated();
-        $fromStatus = $issue->status;
+        $fromColumnId = $issue->column_id;
         $fromPosition = $issue->position;
 
-        $issue = $issueMover->move($issue, $data['to_status'], $data['to_position']);
+        $issue = $issueMover->move($issue, $data['to_column_id'], $data['to_position']);
 
-        if ($fromStatus !== $issue->status || $fromPosition !== $issue->position) {
+        if ($fromColumnId !== $issue->column_id || $fromPosition !== $issue->position) {
             $activityLogger->issueMoved($request->user(), $issue, [
-                'from' => $fromStatus,
-                'to' => $issue->status,
+                'from_column_id' => $fromColumnId,
+                'to_column_id' => $issue->column_id,
                 'from_position' => $fromPosition,
                 'to_position' => $issue->position,
             ]);
+        }
+
+        if ($requestId) {
+            $user->update(['last_issue_move_request_id' => $requestId]);
         }
 
         return ApiResponse::success(['issue' => $issue]);
@@ -143,5 +205,42 @@ class IssueController extends Controller
         $issue->delete();
 
         return ApiResponse::success(['deleted' => true]);
+    }
+
+    protected function applyFilters(Builder|Relation $query, array $params): void
+    {
+        if (! empty($params['q'])) {
+            $search = trim((string) $params['q']);
+            $query->where(function (Builder $builder) use ($search) {
+                $builder->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        if (! empty($params['column_id'])) {
+            $query->where('column_id', $params['column_id']);
+        }
+
+        if (! empty($params['assignee_id'])) {
+            $query->where('assignee_id', $params['assignee_id']);
+        }
+
+        if (! empty($params['label_id'])) {
+            $query->whereHas('labels', function (Builder $builder) use ($params) {
+                $builder->where('labels.id', $params['label_id']);
+            });
+        }
+
+        if (! empty($params['priority'])) {
+            $query->where('priority', $params['priority']);
+        }
+
+        if (! empty($params['due_from'])) {
+            $query->where('due_at', '>=', $params['due_from']);
+        }
+
+        if (! empty($params['due_to'])) {
+            $query->where('due_at', '<=', $params['due_to']);
+        }
     }
 }

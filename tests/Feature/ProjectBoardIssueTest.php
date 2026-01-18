@@ -28,8 +28,13 @@ function createProjectWithBoard(User $user): array
         'workspace_id' => $workspace->id,
     ]);
     $board = $project->board()->create(['name' => 'Main Board']);
+    $columns = collect([
+        ['name' => 'Todo', 'key' => 'todo', 'position' => 1],
+        ['name' => 'Doing', 'key' => 'doing', 'position' => 2],
+        ['name' => 'Done', 'key' => 'done', 'position' => 3],
+    ])->map(fn (array $data) => $board->columns()->create($data));
 
-    return [$workspace, $project, $board];
+    return [$workspace, $project, $board, $columns];
 }
 
 it('lists projects for workspace members and scopes by workspace', function () {
@@ -100,53 +105,62 @@ it('blocks board access for non-members', function () {
     $response->assertStatus(403);
 });
 
-it('lists issues ordered by status then position', function () {
+it('lists issues grouped by column and ordered by position', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
+    $doneColumn = $columns->firstWhere('key', 'done');
 
     $board->issues()->createMany([
-        ['title' => 'Todo 2', 'status' => 'todo', 'position' => 2],
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
-        ['title' => 'Done 1', 'status' => 'done', 'position' => 1],
+        ['title' => 'Todo 2', 'column_id' => $todoColumn->id, 'position' => 2],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
+        ['title' => 'Done 1', 'column_id' => $doneColumn->id, 'position' => 1],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->getJson("/api/boards/{$board->id}/issues");
 
     $response->assertStatus(200)
-        ->assertJsonPath('data.issues.0.title', 'Doing 1')
-        ->assertJsonPath('data.issues.1.title', 'Done 1')
-        ->assertJsonPath('data.issues.2.title', 'Todo 1')
-        ->assertJsonPath('data.issues.3.title', 'Todo 2');
+        ->assertJsonPath('data.columns.0.key', 'todo')
+        ->assertJsonPath('data.columns.0.issues.0.title', 'Todo 1')
+        ->assertJsonPath('data.columns.0.issues.1.title', 'Todo 2')
+        ->assertJsonPath('data.columns.1.key', 'doing')
+        ->assertJsonPath('data.columns.1.issues.0.title', 'Doing 1')
+        ->assertJsonPath('data.columns.2.key', 'done')
+        ->assertJsonPath('data.columns.2.issues.0.title', 'Done 1');
 });
 
-it('assigns next position within status when creating issues', function () {
+it('assigns next position within a column when creating issues', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
 
     $board->issues()->createMany([
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Todo 2', 'status' => 'todo', 'position' => 2],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Todo 2', 'column_id' => $todoColumn->id, 'position' => 2],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson("/api/boards/{$board->id}/issues", [
             'title' => 'Todo 3',
-            'status' => 'todo',
+            'column_id' => $todoColumn->id,
         ]);
 
     $response->assertStatus(201)
         ->assertJsonPath('data.issue.position', 3);
 });
 
-it('defaults status to todo and increments within that status only', function () {
+it('defaults to the first column and increments within that column only', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $board->issues()->createMany([
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
@@ -155,62 +169,67 @@ it('defaults status to todo and increments within that status only', function ()
         ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('data.issue.status', 'todo')
+        ->assertJsonPath('data.issue.column_id', $todoColumn->id)
         ->assertJsonPath('data.issue.position', 2);
 });
 
-it('assigns next position for a specified status independently of other statuses', function () {
+it('assigns next position for a specified column independently of other columns', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $board->issues()->createMany([
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson("/api/boards/{$board->id}/issues", [
             'title' => 'Doing 2',
-            'status' => 'doing',
+            'column_id' => $doingColumn->id,
         ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('data.issue.status', 'doing')
+        ->assertJsonPath('data.issue.column_id', $doingColumn->id)
         ->assertJsonPath('data.issue.position', 2);
 });
 
-it('repositions issues when status changes', function () {
+it('repositions issues when column changes', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
 
     $issue = $board->issues()->create([
         'title' => 'Move me',
-        'status' => 'todo',
+        'column_id' => $todoColumn->id,
         'position' => 1,
     ]);
 
     $board->issues()->createMany([
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
-        ['title' => 'Doing 2', 'status' => 'doing', 'position' => 2],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
+        ['title' => 'Doing 2', 'column_id' => $doingColumn->id, 'position' => 2],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
         ->patchJson("/api/issues/{$issue->id}", [
-            'status' => 'doing',
+            'column_id' => $doingColumn->id,
         ]);
 
     $response->assertStatus(200)
-        ->assertJsonPath('data.issue.status', 'doing')
+        ->assertJsonPath('data.issue.column_id', $doingColumn->id)
         ->assertJsonPath('data.issue.position', 3);
 });
 
 it('deletes issues', function () {
     $user = User::factory()->create();
-    [, , $board] = createProjectWithBoard($user);
+    [, , $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
 
     $issue = $board->issues()->create([
         'title' => 'Delete me',
-        'status' => 'todo',
+        'column_id' => $todoColumn->id,
         'position' => 1,
     ]);
 
@@ -225,12 +244,15 @@ it('deletes issues', function () {
 
 it('returns grouped issues when requested', function () {
     $user = User::factory()->create();
-    [, $project, $board] = createProjectWithBoard($user);
+    [, $project, $board, $columns] = createProjectWithBoard($user);
+    $todoColumn = $columns->firstWhere('key', 'todo');
+    $doingColumn = $columns->firstWhere('key', 'doing');
+    $doneColumn = $columns->firstWhere('key', 'done');
 
     $board->issues()->createMany([
-        ['title' => 'Todo 1', 'status' => 'todo', 'position' => 1],
-        ['title' => 'Doing 1', 'status' => 'doing', 'position' => 1],
-        ['title' => 'Done 1', 'status' => 'done', 'position' => 1],
+        ['title' => 'Todo 1', 'column_id' => $todoColumn->id, 'position' => 1],
+        ['title' => 'Doing 1', 'column_id' => $doingColumn->id, 'position' => 1],
+        ['title' => 'Done 1', 'column_id' => $doneColumn->id, 'position' => 1],
     ]);
 
     $response = $this->actingAs($user, 'sanctum')
@@ -238,10 +260,13 @@ it('returns grouped issues when requested', function () {
 
     $response->assertStatus(200)
         ->assertJsonStructure([
-            'data' => ['columns' => ['todo', 'doing', 'done']],
+            'data' => ['columns'],
             'meta' => ['request_id'],
         ])
-        ->assertJsonPath('data.columns.todo.0.title', 'Todo 1')
-        ->assertJsonPath('data.columns.doing.0.title', 'Doing 1')
-        ->assertJsonPath('data.columns.done.0.title', 'Done 1');
+        ->assertJsonPath('data.columns.0.key', 'todo')
+        ->assertJsonPath('data.columns.0.issues.0.title', 'Todo 1')
+        ->assertJsonPath('data.columns.1.key', 'doing')
+        ->assertJsonPath('data.columns.1.issues.0.title', 'Doing 1')
+        ->assertJsonPath('data.columns.2.key', 'done')
+        ->assertJsonPath('data.columns.2.issues.0.title', 'Done 1');
 });

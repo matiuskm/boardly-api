@@ -7,9 +7,12 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\WorkspaceController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\BoardController;
+use App\Http\Controllers\Api\BoardColumnController;
 use App\Http\Controllers\Api\IssueController;
 use App\Http\Controllers\Api\IssueCommentController;
+use App\Http\Controllers\Api\IssueLabelController;
 use App\Http\Controllers\Api\ActivityController;
+use App\Http\Controllers\Api\LabelController;
 
 Route::get('/user', function (Request $request) {
     return ApiResponse::success(['user' => $request->user()]);
@@ -30,12 +33,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/projects/{project}/board', [BoardController::class, 'show']);
     Route::post('/projects/{project}/board', [BoardController::class, 'store']);
 
+    Route::get('/boards/{board}/columns', [BoardColumnController::class, 'index']);
+    Route::post('/boards/{board}/columns', [BoardColumnController::class, 'store']);
+    Route::patch('/columns/{column}', [BoardColumnController::class, 'update']);
+    Route::delete('/columns/{column}', [BoardColumnController::class, 'destroy']);
+
     Route::get('/boards/{board}/issues', [IssueController::class, 'index']);
     Route::post('/boards/{board}/issues', [IssueController::class, 'store']);
     Route::patch('/issues/{issue}', [IssueController::class, 'update']);
     Route::post('/issues/{issue}/move', [IssueController::class, 'move']);
     Route::post('/issues/{issue}/assign', [IssueController::class, 'assign']);
     Route::delete('/issues/{issue}', [IssueController::class, 'destroy']);
+
+    Route::get('/workspaces/{workspace}/labels', [LabelController::class, 'index']);
+    Route::post('/workspaces/{workspace}/labels', [LabelController::class, 'store']);
+    Route::post('/issues/{issue}/labels', [IssueLabelController::class, 'store']);
+    Route::delete('/issues/{issue}/labels/{label}', [IssueLabelController::class, 'destroy']);
 
     Route::get('/issues/{issue}/comments', [IssueCommentController::class, 'index']);
     Route::post('/issues/{issue}/comments', [IssueCommentController::class, 'store']);

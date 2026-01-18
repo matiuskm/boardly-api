@@ -12,6 +12,8 @@ use App\Models\Issue;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\IssueMover;
+use App\Services\IssueScheduler;
+use App\Services\NotificationService;
 use App\Support\ApiResponse;
 use App\Support\WorkspaceAccess;
 use Illuminate\Database\Eloquent\Builder;
@@ -58,7 +60,7 @@ class IssueController extends Controller
         return ApiResponse::success(['columns' => $columns]);
     }
 
-    public function store(StoreIssueRequest $request, Board $board, ActivityLogger $activityLogger)
+    public function store(StoreIssueRequest $request, Board $board, ActivityLogger $activityLogger, IssueScheduler $scheduler)
     {
         $this->authorize('create', $board);
 
@@ -69,8 +71,13 @@ class IssueController extends Controller
             return ApiResponse::error('Board has no columns.', 'no_columns', 422);
         }
 
-        if (! $board->columns()->where('id', $columnId)->exists()) {
+        $column = $board->columns()->where('id', $columnId)->first();
+        if (! $column) {
             return ApiResponse::error('Column not found on board.', 'column_not_found', 404);
+        }
+
+        if (! $this->canAcceptIssue($column->id, $column->wip_limit)) {
+            return ApiResponse::error('WIP limit reached.', 'wip_limit_reached', 422);
         }
 
         $position = $board->issues()
@@ -87,11 +94,12 @@ class IssueController extends Controller
         ]);
 
         $activityLogger->issueCreated($request->user(), $issue);
+        $scheduler->assignToBacklog($board->project, $issue);
 
         return ApiResponse::success(['issue' => $issue], 201);
     }
 
-    public function update(UpdateIssueRequest $request, Issue $issue, IssueMover $issueMover, ActivityLogger $activityLogger)
+    public function update(UpdateIssueRequest $request, Issue $issue, IssueMover $issueMover, ActivityLogger $activityLogger, NotificationService $notifications)
     {
         $this->authorize('update', $issue);
 
@@ -107,8 +115,13 @@ class IssueController extends Controller
         $fromPosition = $issue->position;
 
         if (array_key_exists('column_id', $data) && $data['column_id'] !== $issue->column_id) {
-            if (! $issue->board->columns()->where('id', $data['column_id'])->exists()) {
+            $targetColumn = $issue->board->columns()->where('id', $data['column_id'])->first();
+            if (! $targetColumn) {
                 return ApiResponse::error('Column not found on board.', 'column_not_found', 404);
+            }
+
+            if (! $this->canAcceptIssue($targetColumn->id, $targetColumn->wip_limit)) {
+                return ApiResponse::error('WIP limit reached.', 'wip_limit_reached', 422);
             }
 
             $targetPosition = ($issue->board->issues()
@@ -132,6 +145,11 @@ class IssueController extends Controller
                 'from_position' => $fromPosition,
                 'to_position' => $issue->position,
             ]);
+
+            $issue->load('column');
+            if ($issue->column?->key === 'done') {
+                $notifications->issueMovedToDone($issue, $request->user());
+            }
         }
 
         if ($requestId) {
@@ -141,7 +159,7 @@ class IssueController extends Controller
         return ApiResponse::success(['issue' => $issue->fresh()]);
     }
 
-    public function move(MoveIssueRequest $request, Issue $issue, IssueMover $issueMover, ActivityLogger $activityLogger)
+    public function move(MoveIssueRequest $request, Issue $issue, IssueMover $issueMover, ActivityLogger $activityLogger, NotificationService $notifications)
     {
         $this->authorize('move', $issue);
 
@@ -155,6 +173,15 @@ class IssueController extends Controller
         $fromColumnId = $issue->column_id;
         $fromPosition = $issue->position;
 
+        $targetColumn = $issue->board->columns()->where('id', $data['to_column_id'])->first();
+        if (! $targetColumn) {
+            return ApiResponse::error('Column not found on board.', 'column_not_found', 404);
+        }
+
+        if ($targetColumn->id !== $issue->column_id && ! $this->canAcceptIssue($targetColumn->id, $targetColumn->wip_limit)) {
+            return ApiResponse::error('WIP limit reached.', 'wip_limit_reached', 422);
+        }
+
         $issue = $issueMover->move($issue, $data['to_column_id'], $data['to_position']);
 
         if ($fromColumnId !== $issue->column_id || $fromPosition !== $issue->position) {
@@ -164,6 +191,11 @@ class IssueController extends Controller
                 'from_position' => $fromPosition,
                 'to_position' => $issue->position,
             ]);
+
+            $issue->load('column');
+            if ($issue->column?->key === 'done') {
+                $notifications->issueMovedToDone($issue, $request->user());
+            }
         }
 
         if ($requestId) {
@@ -193,6 +225,13 @@ class IssueController extends Controller
 
         $activityLogger->issueAssigned($request->user(), $issue, $fromUserId, $assigneeId);
 
+        if ($assigneeId) {
+            $assignee = User::find($assigneeId);
+            if ($assignee) {
+                app(NotificationService::class)->issueAssigned($assignee, $issue, $request->user());
+            }
+        }
+
         return ApiResponse::success(['issue' => $issue->fresh()]);
     }
 
@@ -205,6 +244,17 @@ class IssueController extends Controller
         $issue->delete();
 
         return ApiResponse::success(['deleted' => true]);
+    }
+
+    protected function canAcceptIssue(string $columnId, ?int $wipLimit): bool
+    {
+        if (! $wipLimit) {
+            return true;
+        }
+
+        $count = Issue::where('column_id', $columnId)->count();
+
+        return $count < $wipLimit;
     }
 
     protected function applyFilters(Builder|Relation $query, array $params): void

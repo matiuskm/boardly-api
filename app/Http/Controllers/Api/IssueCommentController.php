@@ -7,6 +7,7 @@ use App\Http\Requests\StoreCommentRequest;
 use App\Models\Comment;
 use App\Models\Issue;
 use App\Services\ActivityLogger;
+use App\Services\NotificationService;
 use App\Support\ApiResponse;
 
 class IssueCommentController extends Controller
@@ -23,7 +24,7 @@ class IssueCommentController extends Controller
         return ApiResponse::success(['comments' => $comments]);
     }
 
-    public function store(StoreCommentRequest $request, Issue $issue, ActivityLogger $activityLogger)
+    public function store(StoreCommentRequest $request, Issue $issue, ActivityLogger $activityLogger, NotificationService $notifications)
     {
         $comment = new Comment(['issue_id' => $issue->id]);
         $comment->setRelation('issue', $issue);
@@ -37,6 +38,7 @@ class IssueCommentController extends Controller
         ]);
 
         $activityLogger->issueCommented($request->user(), $created);
+        $notifications->issueCommented($issue, $request->user());
 
         return ApiResponse::success(['comment' => $created], 201);
     }

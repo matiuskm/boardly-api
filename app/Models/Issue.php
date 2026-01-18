@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Issue extends Model
 {
@@ -61,5 +62,17 @@ class Issue extends Model
     public function labels(): BelongsToMany
     {
         return $this->belongsToMany(Label::class, 'issue_label');
+    }
+
+    public function sprintAssignment(): HasOne
+    {
+        return $this->hasOne(IssueSprint::class);
+    }
+
+    public function sprints(): BelongsToMany
+    {
+        return $this->belongsToMany(Sprint::class, 'issue_sprint')
+            ->withPivot('position')
+            ->withTimestamps();
     }
 }

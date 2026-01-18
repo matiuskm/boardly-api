@@ -4,27 +4,27 @@ namespace App\Policies;
 
 use App\Models\Board;
 use App\Models\User;
-use App\Support\WorkspaceAccess;
+use App\Support\ProjectAccess;
 
 class BoardPolicy
 {
     public function view(User $user, Board $board): bool
     {
-        return WorkspaceAccess::isMember($user, $board->project->workspace);
+        return ProjectAccess::canViewProject($user, $board->project);
     }
 
     public function create(User $user, Board $board): bool
     {
-        return WorkspaceAccess::canManageWorkspace($user, $board->project->workspace);
+        return ProjectAccess::canManageProject($user, $board->project);
     }
 
     public function update(User $user, Board $board): bool
     {
-        return WorkspaceAccess::canManageWorkspace($user, $board->project->workspace);
+        return ProjectAccess::canManageProject($user, $board->project);
     }
 
     public function delete(User $user, Board $board): bool
     {
-        return WorkspaceAccess::canManageWorkspace($user, $board->project->workspace);
+        return ProjectAccess::canManageProject($user, $board->project);
     }
 }

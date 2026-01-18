@@ -4,17 +4,17 @@ namespace App\Policies;
 
 use App\Models\Comment;
 use App\Models\User;
-use App\Support\WorkspaceAccess;
+use App\Support\ProjectAccess;
 
 class CommentPolicy
 {
     public function create(User $user, Comment $comment): bool
     {
-        return WorkspaceAccess::isMember($user, $comment->issue->board->project->workspace);
+        return ProjectAccess::canManageIssues($user, $comment->issue->board->project);
     }
 
     public function delete(User $user, Comment $comment): bool
     {
-        return WorkspaceAccess::canManageWorkspace($user, $comment->issue->board->project->workspace);
+        return ProjectAccess::canManageProject($user, $comment->issue->board->project);
     }
 }

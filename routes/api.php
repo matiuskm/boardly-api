@@ -13,6 +13,11 @@ use App\Http\Controllers\Api\IssueCommentController;
 use App\Http\Controllers\Api\IssueLabelController;
 use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\LabelController;
+use App\Http\Controllers\Api\SprintController;
+use App\Http\Controllers\Api\SprintIssueController;
+use App\Http\Controllers\Api\BacklogController;
+use App\Http\Controllers\Api\ProjectMemberController;
+use App\Http\Controllers\Api\NotificationController;
 
 Route::get('/user', function (Request $request) {
     return ApiResponse::success(['user' => $request->user()]);
@@ -32,6 +37,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/projects/{project}/board', [BoardController::class, 'show']);
     Route::post('/projects/{project}/board', [BoardController::class, 'store']);
+
+    Route::get('/projects/{project}/sprints', [SprintController::class, 'index']);
+    Route::post('/projects/{project}/sprints', [SprintController::class, 'store']);
+    Route::patch('/sprints/{sprint}', [SprintController::class, 'update']);
+    Route::delete('/sprints/{sprint}', [SprintController::class, 'destroy']);
+    Route::post('/sprints/{sprint}/start', [SprintController::class, 'start']);
+    Route::post('/sprints/{sprint}/complete', [SprintController::class, 'complete']);
+    Route::post('/projects/{project}/backlog/reorder', [BacklogController::class, 'reorder']);
+    Route::post('/sprints/{sprint}/issues/reorder', [SprintIssueController::class, 'reorder']);
+
+    Route::get('/projects/{project}/members', [ProjectMemberController::class, 'index']);
+    Route::post('/projects/{project}/members', [ProjectMemberController::class, 'store']);
+    Route::patch('/projects/{project}/members/{user}', [ProjectMemberController::class, 'update']);
+    Route::delete('/projects/{project}/members/{user}', [ProjectMemberController::class, 'destroy']);
 
     Route::get('/boards/{board}/columns', [BoardColumnController::class, 'index']);
     Route::post('/boards/{board}/columns', [BoardColumnController::class, 'store']);
@@ -54,4 +73,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/issues/{issue}/comments', [IssueCommentController::class, 'store']);
 
     Route::get('/workspaces/{workspace}/activities', [ActivityController::class, 'index']);
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'read']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
 });

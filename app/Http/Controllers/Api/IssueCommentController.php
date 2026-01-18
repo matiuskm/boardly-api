@@ -18,7 +18,7 @@ class IssueCommentController extends Controller
         $comments = $issue->comments()
             ->with('author')
             ->orderBy('created_at')
-            ->get();
+            ->paginate(20);
 
         return ApiResponse::success(['comments' => $comments]);
     }

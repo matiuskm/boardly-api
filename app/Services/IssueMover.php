@@ -7,16 +7,16 @@ use Illuminate\Support\Facades\DB;
 
 class IssueMover
 {
-    public function move(Issue $issue, string $toStatus, int $toPosition): Issue
+    public function move(Issue $issue, string $toColumnId, int $toPosition): Issue
     {
-        return DB::transaction(function () use ($issue, $toStatus, $toPosition) {
+        return DB::transaction(function () use ($issue, $toColumnId, $toPosition) {
             $boardId = $issue->board_id;
-            $fromStatus = $issue->status;
+            $fromColumnId = $issue->column_id;
             $fromPosition = $issue->position;
 
-            if ($fromStatus === $toStatus) {
+            if ($fromColumnId === $toColumnId) {
                 $maxPosition = Issue::where('board_id', $boardId)
-                    ->where('status', $toStatus)
+                    ->where('column_id', $toColumnId)
                     ->max('position') ?? 0;
 
                 $targetPosition = max(1, min($toPosition, $maxPosition));
@@ -27,12 +27,12 @@ class IssueMover
 
                 if ($targetPosition < $fromPosition) {
                     Issue::where('board_id', $boardId)
-                        ->where('status', $toStatus)
+                        ->where('column_id', $toColumnId)
                         ->whereBetween('position', [$targetPosition, $fromPosition - 1])
                         ->increment('position');
                 } else {
                     Issue::where('board_id', $boardId)
-                        ->where('status', $toStatus)
+                        ->where('column_id', $toColumnId)
                         ->whereBetween('position', [$fromPosition + 1, $targetPosition])
                         ->decrement('position');
                 }
@@ -43,23 +43,23 @@ class IssueMover
             }
 
             $targetCount = Issue::where('board_id', $boardId)
-                ->where('status', $toStatus)
+                ->where('column_id', $toColumnId)
                 ->count();
 
             $targetPosition = max(1, min($toPosition, $targetCount + 1));
 
             Issue::where('board_id', $boardId)
-                ->where('status', $fromStatus)
+                ->where('column_id', $fromColumnId)
                 ->where('position', '>', $fromPosition)
                 ->decrement('position');
 
             Issue::where('board_id', $boardId)
-                ->where('status', $toStatus)
+                ->where('column_id', $toColumnId)
                 ->where('position', '>=', $targetPosition)
                 ->increment('position');
 
             $issue->update([
-                'status' => $toStatus,
+                'column_id' => $toColumnId,
                 'position' => $targetPosition,
             ]);
 

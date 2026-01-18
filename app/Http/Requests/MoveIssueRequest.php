@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class MoveIssueRequest extends FormRequest
 {
@@ -13,8 +14,15 @@ class MoveIssueRequest extends FormRequest
 
     public function rules(): array
     {
+        $issue = $this->route('issue');
+
         return [
-            'to_status' => ['required', 'in:todo,doing,done'],
+            'to_column_id' => [
+                'required',
+                'uuid',
+                Rule::exists('board_columns', 'id')
+                    ->where('board_id', $issue?->board_id),
+            ],
             'to_position' => ['required', 'integer', 'min:1'],
         ];
     }

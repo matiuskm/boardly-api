@@ -28,6 +28,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'last_issue_move_request_id',
+        'last_issue_update_request_id',
     ];
 
     /**

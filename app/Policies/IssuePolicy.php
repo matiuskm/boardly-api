@@ -8,6 +8,11 @@ use App\Support\WorkspaceAccess;
 
 class IssuePolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return WorkspaceAccess::canManageAnyWorkspace($user);
+    }
+
     public function view(User $user, Issue $issue): bool
     {
         return WorkspaceAccess::isMember($user, $issue->board->project->workspace);

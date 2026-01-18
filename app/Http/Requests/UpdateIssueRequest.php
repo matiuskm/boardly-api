@@ -16,7 +16,9 @@ class UpdateIssueRequest extends FormRequest
         return [
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
-            'status' => ['sometimes', 'in:todo,doing,done'],
+            'column_id' => ['sometimes', 'uuid', 'exists:board_columns,id'],
+            'priority' => ['sometimes', 'nullable', 'integer', 'between:1,5'],
+            'due_at' => ['sometimes', 'nullable', 'date'],
         ];
     }
 }

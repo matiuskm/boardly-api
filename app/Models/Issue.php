@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Issue extends Model
 {
@@ -20,15 +21,26 @@ class Issue extends Model
     protected $fillable = [
         'title',
         'description',
-        'status',
         'position',
         'board_id',
+        'column_id',
         'assignee_id',
+        'priority',
+        'due_at',
+    ];
+
+    protected $casts = [
+        'due_at' => 'datetime',
     ];
 
     public function board(): BelongsTo
     {
         return $this->belongsTo(Board::class);
+    }
+
+    public function column(): BelongsTo
+    {
+        return $this->belongsTo(BoardColumn::class, 'column_id');
     }
 
     public function assignee(): BelongsTo
@@ -44,5 +56,10 @@ class Issue extends Model
     public function activities(): MorphMany
     {
         return $this->morphMany(Activity::class, 'subject');
+    }
+
+    public function labels(): BelongsToMany
+    {
+        return $this->belongsToMany(Label::class, 'issue_label');
     }
 }

@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Board;
+use App\Models\BoardColumn;
 use App\Models\Issue;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -21,15 +22,17 @@ class IssueFactory extends Factory
      */
     public function definition(): array
     {
-        $statuses = ['todo', 'doing', 'done'];
+        $board = Board::factory();
 
         return [
             'title' => fake()->sentence(4),
             'description' => fake()->sentence(),
-            'status' => fake()->randomElement($statuses),
             'position' => fake()->numberBetween(1, 100),
-            'board_id' => Board::factory(),
+            'board_id' => $board,
+            'column_id' => BoardColumn::factory()->for($board),
             'assignee_id' => null,
+            'priority' => fake()->numberBetween(1, 5),
+            'due_at' => null,
         ];
     }
 

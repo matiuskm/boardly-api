@@ -30,4 +30,9 @@ class Board extends Model
     {
         return $this->hasMany(Issue::class);
     }
+
+    public function columns(): HasMany
+    {
+        return $this->hasMany(BoardColumn::class);
+    }
 }

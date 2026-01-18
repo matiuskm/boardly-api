@@ -15,7 +15,7 @@ class ActivityController extends Controller
 
         $activities = Activity::where('workspace_id', $workspace->id)
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->cursorPaginate(20);
 
         return ApiResponse::success(['activities' => $activities]);
     }

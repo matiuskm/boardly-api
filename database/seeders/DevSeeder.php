@@ -43,11 +43,21 @@ class DevSeeder extends Seeder
             'name' => 'Demo Board',
         ]);
 
-        collect(range(1, 5))->each(function ($i) use ($board) {
+        $columns = collect([
+            ['name' => 'Todo', 'key' => 'todo', 'position' => 1],
+            ['name' => 'Doing', 'key' => 'doing', 'position' => 2],
+            ['name' => 'Done', 'key' => 'done', 'position' => 3],
+        ])->map(function (array $data) use ($board) {
+            return $board->columns()->create($data);
+        });
+
+        $todoColumn = $columns->firstWhere('key', 'todo');
+
+        collect(range(1, 5))->each(function ($i) use ($board, $todoColumn) {
             $board->issues()->create([
                 'title' => "Demo Issue {$i}",
                 'description' => "Description for issue {$i}",
-                'status' => 'todo',
+                'column_id' => $todoColumn?->id,
                 'position' => $i,
             ]);
         });
